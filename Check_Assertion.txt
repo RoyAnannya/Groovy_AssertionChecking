@@ -1,0 +1,236 @@
+import org.apache.jmeter.assertions.AssertionResult
+
+
+class Assert {
+
+	def SampleResult
+	def ctx
+	def vars
+	def result_file
+	def result
+	def status
+	String actual_value
+	def response
+	def testSuite
+	def testCase
+	def prev
+
+	def init(SampleResult, ctx, vars, prev, result_file, result){
+		this.SampleResult = SampleResult
+		this.ctx = ctx
+		this.vars = vars
+		this.prev = prev
+		this.result = result
+		this.result_file = result_file
+		this.response = SampleResult.getResponseDataAsString()
+		this.testSuite = ctx.getThreadGroup().getName()
+		this.testCase = ctx.getCurrentSampler().getName()
+		if(!result_file.exists()){
+			result_file.write("Test Suite, Test Case, Assertion Name,Expected Value,Actual Value,Status\n")	
+		}
+		if(!result.exists()){
+			result.write("Test Suite, Test Case, Status, Response Message, Output ID\n")	
+		}
+	}
+	
+    def checkSuccess(filepath){
+		try {
+			String successIndicator = "<successIndicator>(.+?)</successIndicator>"
+			String isSuccess = (response =~ successIndicator)[0][1]
+			assert isSuccess == "Success"
+			status = "Pass"
+			vars.put("response_msg","OK")
+			checkAll(filepath)
+		}catch(AssertionError e){
+			
+				status = "Fail"
+				println testSuite+" Status : Fail\n"
+								
+				String errorMsg = "<messages>(.+?)</messages>"
+				String msg = (response =~ errorMsg)[0][1]
+				
+				AssertionResult asserRes = new AssertionResult("Error in T24")
+				asserRes.setFailure(true)
+				asserRes.setFailureMessage("Response is not Success "+msg)
+				SampleResult.addAssertionResult(asserRes)
+			
+				vars.put("response_msg","Response is not success "+msg)
+				vars.put("flag","1")
+				result.append testSuite+","+testCase+","+status+","+vars.get("response_msg")+","+vars.get("Output_id")
+				result.append '\n'
+				prev.setStopThread(true)
+				
+		}	
+	}
+
+	def check(name, regEx, expected, i, j, present){
+	
+		try {
+				
+				actual_value = (response =~ regEx)[i-1][j]
+                actual_value = actual_value.replaceAll(',','')
+                actual_value = actual_value.replace(".00","")
+				
+				expected = expected.replaceAll(',','')
+                expected = expected.replace(".00","")
+
+				expected  = expected + ""
+				actual_value = actual_value + ""
+
+				if(present.equalsIgnoreCase("true")){
+					assert expected ==  actual_value
+				}else if(present.equalsIgnoreCase("false")){
+					assert expected !=  actual_value
+				}
+
+
+				if(actual_value.size() > 20){
+				 	actual_value = actual_value.substring(0,18)
+					actual_value = actual_value+"...."
+				 }
+
+				vars.put("Status_id","Success")
+				status = "Pass"
+		}
+		catch (AssertionError e) {
+
+			 	status = "Fail"
+				AssertionResult asserRes = new AssertionResult("Assertion Error")
+				asserRes.setFailure(true)
+				asserRes.setFailureMessage(name+" Expected value: " + expected + " || Actual value : " + actual_value)
+				SampleResult.addAssertionResult(asserRes)
+			
+				vars.put("response_msg", "Error in : "+name+" : Expected= "+expected+" : Actual= "+actual_value)
+				vars.put("Status_id","Fail")
+				vars.put("flag","1")
+				prev.setStopThread(true)
+				
+
+		} catch (NullPointerException e){
+
+				status = "Fail"
+				AssertionResult asserRes = new AssertionResult("Assertion Error")
+				asserRes.setFailure(true)
+				asserRes.setFailureMessage("value fetched is null")
+				SampleResult.addAssertionResult(asserRes)
+				
+				vars.put("response_msg", "Error in : "+name+" : Expected= "+expected+" : Actual= "+actual_value)
+				vars.put("Status_id","Fail")
+				vars.put("flag","1")
+				prev.setStopThread(true)
+				
+		} catch (IndexOutOfBoundsException e){
+
+				status = "Fail"
+				AssertionResult asserRes = new AssertionResult("Assertion Error")
+				asserRes.setFailure(true)
+				asserRes.setFailureMessage("Match index out of bound")
+				SampleResult.addAssertionResult(asserRes)
+				
+				
+				vars.put("response_msg", "Error in : "+name+" : Expected= "+expected+" : Actual= "+actual_value)
+				vars.put("Status_id","Fail")
+				vars.put("flag","1")
+				prev.setStopThread(true)
+				
+		}
+		 catch (Exception e){
+				
+				status = "Fail"
+				AssertionResult asserRes = new AssertionResult("Assertion Error")
+				asserRes.setFailure(true)
+				asserRes.setFailureMessage("Go for debug!")
+				SampleResult.addAssertionResult(asserRes)
+                
+				
+				vars.put("response_msg", "Error in : "+name+" : Expected= "+expected+" : Actual= "+actual_value)
+				vars.put("Status_id","Fail")
+				vars.put("flag","1")
+				prev.setStopThread(true)
+				
+		}
+
+		println "Assertion : " + name	
+		if(present){
+			println "Expected : " + expected
+		}else{
+			println "Expected : (not) " + expected
+		}
+		println "Actual : " + actual_value	
+		println "Status : " + status
+		println ""
+
+		if(status.equalsIgnoreCase("Fail")){
+			println testSuite+" Status : Fail\n"
+		}
+
+		name = name.toString().replaceAll(',','')
+		if(present){
+			expected = expected.toString().replaceAll(',','')
+		}else{
+			expected = "(not) "+expected.toString().replaceAll(',','')
+		}	
+		
+			
+		result_file.append testSuite+","+testCase+","+name+","+expected+","+actual_value+","+status
+		result_file.append '\n'
+		
+
+	}
+
+    def checkAll(filepath) {
+        File inputFile = new File(filepath)
+        if (inputFile.exists()) {
+            inputFile.eachLine { line ->
+                String[] data = line.split(',')
+
+                if(data[0].equalsIgnoreCase(testSuite) && data[1].equalsIgnoreCase(testCase)){                   
+					String expected_val = data[4]
+					String regEx = data[3]
+					String new_regEx
+
+                    if(data[7].equalsIgnoreCase("false")){
+                        data[4] = data[4].replace("not ","")
+                    }
+
+					if(expected_val.contains("__")){
+						expected_val = expected_val.replaceAll("__",'')
+						expected_val = vars.get(expected_val)
+					}
+
+					if(regEx.contains("__")){
+						String[] regEx_parts = regEx.split("__")
+
+						regEx_parts.each{ part ->
+							if(part.contains("getVar-")){
+								part = part.replace("getVar-",'')
+								part = vars.get(part)
+							}
+							new_regEx = new_regEx+part
+						}
+						new_regEx = new_regEx.replace("null",'')
+
+					}else{
+						new_regEx = regEx
+					}
+      				check(data[2],new_regEx,expected_val,data[5].toInteger(),data[6].toInteger(),data[7])
+      	
+   					if(status.equalsIgnoreCase("Fail")){
+						// ctx.throwException("doingOnPurpose")
+						prev.setStopThread(true)
+					}	
+                }
+            }
+        }else{
+            println "File containing assertions not found!"
+        }    
+
+		vars.put("Status_id",status)
+		result.append testSuite+","+testCase+","+status+","+vars.get("response_msg")+","+vars.get("Output_id")
+		result.append '\n'
+    }
+
+}
+
+return new Assert()
+

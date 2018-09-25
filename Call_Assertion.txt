@@ -1,0 +1,13 @@
+
+//initialize file paths
+customAssertion = "FilePath"+"\\Assertion.groovy"
+assertion_result = "FilePath"+"\\Assertion_Result.csv"
+assertion_data = "FilePath"+"\\Assertion_Data.csv"
+
+//evaluate or parse file
+def checkassertion = evaluate(new File(vars.get('customAssertion')))
+def result_file = new File(vars.get('assertion_result'))
+
+//initialize the preprocessor and call the function
+checkassertion.init(SampleResult, ctx, vars, prev, result_file, result)
+checkassertion.checkSuccess(vars.get('assertion_data'))
